@@ -1,4 +1,4 @@
-##
+## (english version in the back)
 RoboSkill DSL Example: 智能清扫机器人
 ==========================================
 
@@ -147,6 +147,164 @@ skill cleaning_robot {
     }
 
     # AI 检测到的物体处理
+    fn handle_detection(obj) {
+        if obj.label == "person" {
+            speak("Hello, person!")
+            light.on("white")
+            wait(1000)
+            light.off()
+        }
+    }
+}
+
+# RoboSkill DSL Example: Smart Cleaning Robot
+================================================
+
+Functional Description:
+1. Automatically detect and avoid obstacles
+2. Perform cleaning operations
+3. Auto-return to charging station when battery is low
+4. Voice feedback for current status
+
+Author: RoboTeam
+Version: 1.0.0
+
+```rsl
+skill cleaning_robot {
+    # Metadata
+    version = "1.0.0"
+    author = "RoboTeam"
+    description = "Smart Cleaning Robot - Auto Obstacle Avoidance, Cleaning, Charging"
+
+    # State Variables
+    let is_cleaning = false
+    let cleaning_time = 0
+    let max_cleaning_time = 300  # 5 minutes
+    let charge_station = {x: 0, y: 0}
+
+    # Initialization
+    fn setup() {
+        speak("Initializing cleaning robot")
+        move.stop()
+        light.on("blue")
+        wait(500)
+        light.off()
+        speak("Ready!")
+    }
+
+    # Main Loop
+    fn loop() {
+        # Check battery level
+        let battery = power.battery()
+
+        if battery < 20 {
+            speak("Low battery, returning to charge")
+            light.blink("red", 2)
+            return_to_charge()
+            return
+        }
+
+        # Obstacle detection
+        let front_dist = sense.ultrasonic("front")
+        let left_dist = sense.ultrasonic("left")
+        let right_dist = sense.ultrasonic("right")
+
+        if front_dist < 0.5 {
+            # Obstacle ahead
+            speak("Obstacle ahead")
+            light.on("yellow")
+
+            # Find the widest path
+            if left_dist > right_dist {
+                rotate.left(90)
+                speak("Turning left")
+            } else {
+                rotate.right(90)
+                speak("Turning right")
+            }
+            wait(500)
+            light.off()
+        }
+
+        # Move forward and clean
+        move.forward(0.6)
+        speak("Cleaning")
+        wait(100)
+
+        # Update cleaning time
+        cleaning_time = cleaning_time + 1
+
+        # Return to charge when max cleaning time reached
+        if cleaning_time >= max_cleaning_time {
+            speak("Cleaning complete, returning home")
+            return_to_charge()
+        }
+    }
+
+    # Return to charging station
+    fn return_to_charge() {
+        let current_pos = position.current()
+
+        # Path planning
+        let path = ai.path_plan(
+            start: current_pos,
+            goal: charge_station,
+            mode: "safe"
+        )
+
+        # Move along the path
+        for point in path {
+            move.to(point.x, point.y)
+            wait(200)
+        }
+
+        speak("Arrived at charging station")
+        light.on("green")
+
+        # Start charging
+        start_charging()
+    }
+
+    # Start charging process
+    fn start_charging() {
+        speak("Charging started")
+        light.blink("green", 1)
+
+        while power.battery() < 95 {
+            wait(5000)  # Check every 5 seconds
+            let current = power.battery()
+            if current % 20 == 0 {
+                speak("Battery at " + str(current) + " percent")
+            }
+        }
+
+        speak("Charging complete!")
+        light.off()
+        cleaning_time = 0
+        is_cleaning = false
+    }
+
+    # Event Handlers
+    on button.pressed {
+        speak("Button pressed, starting cleaning")
+        is_cleaning = true
+        cleaning_time = 0
+        light.on("blue")
+    }
+
+    on voice.command("stop") {
+        speak("Stopping")
+        move.stop()
+        is_cleaning = false
+        light.off()
+    }
+
+    on voice.command("go home") {
+        speak("Returning to charge")
+        return_to_charge()
+    }
+
+    # Handle AI-detected objects
     fn handle_detection(obj) {
         if obj.label == "person" {
             speak("Hello, person!")
