@@ -1,8 +1,8 @@
-# RoboSkill DSL (RSL)
+# RoboSkill DSL (RSL) (enlish version is in the back)
 
 **面向机器人技能的领域专用语言**
 
-[English](./README.md) | 中文(enlish version is in the back)
+[English](./README.md) | 中文
 
 ---
 
