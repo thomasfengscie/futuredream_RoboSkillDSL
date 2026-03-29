@@ -1,4 +1,4 @@
-# RoboSkill DSL (RSL) 语言规范 v1.0
+# RoboSkill DSL (RSL) 语言规范 v1.0(enlish version in the back)
 
 ## 1. 语言概述
 
@@ -524,3 +524,481 @@ parallel { ... }            # 并行
 ---
 
 *版本: 1.0.0 | 最后更新: 2024*
+
+# RoboSkill DSL (RSL) Language Specification v1.0
+## Domain-Specific Language for Robot Skill Development
+
+[English](./SPEC.md) | 中文
+
+---
+
+## 1. Language Overview
+RoboSkill DSL (RSL) is a domain-specific language designed exclusively for robot skill development. It provides concise, highly readable syntax that enables developers (including AI models) to rapidly write cross-platform robot control programs.
+
+### 1.1 Design Goals
+- **Minimalist Syntax**: Natural language-like declarative grammar, eliminating boilerplate code
+- **AI-Friendly**: Clear structural syntax for AI models to auto-generate valid code
+- **Hardware-Agnostic**: Supports diverse robot SDKs via an adapter layer
+- **Modular**: Supports skill packages, functions, and event handling
+- **Compilable**: Transpiles to Python, C++, ROS 2, Home Assistant, and other target platforms
+
+### 1.2 Core Features
+✓ Basic Data Types: `number`, `bool`, `string`, `list`, `sensor_data`, `ai_result`
+✓ Action Commands: `move`, `rotate`, `grab`, `release`, `speak`, `light`
+✓ Control Structures: `if/else`, `for`, `while`, `on_event`, `parallel`
+✓ AI Interfaces: `vision.detect`, `voice.recognize`, `path.plan`, `predict`
+✓ Modularity: Skill packages, function definitions, event listeners
+✓ Hardware Abstraction: Unified adapter layer
+
+---
+
+## 2. Lexical Specification
+### 2.1 Keywords
+```
+skill, fn, return, if, else, for, while, on, in, with
+true, false, nil
+move, rotate, grab, release, speak, light, wait, sleep
+sense, detect, recognize, plan, predict, follow
+module, import, export, async, await
+parallel, when, always, never
+```
+
+### 2.2 Identifiers
+- Composed of letters, numbers, and underscores
+- Cannot start with a number
+- Case-sensitive
+- Recommended convention: `snake_case`
+
+### 2.3 Basic Literals
+```rsl
+# Numbers
+42
+3.14
+-273.15
+
+# Booleans
+true
+false
+
+# Strings
+"Hello, Robot!"
+'Single quotes also work'
+
+# Lists
+[1, 2, 3]
+["apple", "banana"]
+
+# Sensor Data
+{type: "distance", value: 1.5, unit: "m"}
+{type: "camera", objects: ["person", "cup"]}
+```
+
+### 2.4 Comments
+```rsl
+# Single-line comment
+
+##
+Multi-line comment
+Spanning multiple lines
+##
+```
+
+---
+
+## 3. Data Types
+### 3.1 Built-in Types
+| Type | Description | Example |
+|------|-------------|---------|
+| `number` | Integer or floating-point | `42`, `3.14` |
+| `bool` | Boolean value | `true`, `false` |
+| `string` | Text string | `"text"` |
+| `list` | Ordered array | `[1, 2, 3]` |
+| `map` | Key-value structure | `{key: value}` |
+| `sensor_data` | Structured sensor data | `{type, value, timestamp}` |
+| `ai_result` | AI processing output | `{type, data, confidence}` |
+
+### 3.2 Type System
+```rsl
+# Explicit type declaration (optional)
+let speed: number = 1.5
+let name: string = "Robot-001"
+
+# Type inference
+let speed = 1.5        # Infers to number
+let is_active = true   # Infers to bool
+
+# Sensor/AI data types
+let distance = sense.ultrasonic()    # Returns sensor_data
+let objects = vision.detect("person") # Returns ai_result
+```
+
+---
+
+## 4. Syntax Structures
+### 4.1 Skill Package Definition
+```rsl
+skill cleaning_robot {
+  # Skill metadata
+  version = "1.0.0"
+  author = "RoboTeam"
+  description = "Smart Cleaning Robot"
+
+  # Skill initialization
+  fn setup() {
+    move.init()
+    sense.ultrasonic.init()
+    vision.init()
+  }
+
+  # Main execution loop
+  fn loop() {
+    let obstacle = sense.ultrasonic() < 0.5
+    if obstacle {
+      rotate(90)
+    } else {
+      move.forward(0.5)
+    }
+  }
+}
+```
+
+### 4.2 Function Definition
+```rsl
+fn calculate_distance(x1, y1, x2, y2) -> number {
+  let dx = x2 - x1
+  let dy = y2 - y1
+  return math.sqrt(dx * dx + dy * dy)
+}
+
+fn move_to_target(target_x, target_y) {
+  let distance = calculate_distance(pos.x, pos.y, target_x, target_y)
+  while distance > 0.1 {
+    move.forward(distance)
+    wait(100)
+  }
+}
+```
+
+### 4.3 Action Commands
+```rsl
+# Movement
+move.forward(speed: 1.0)
+move.backward(speed: 0.5)
+move.stop()
+
+# Rotation
+rotate.left(degrees: 90)
+rotate.right(degrees: 45)
+rotate.to(angle: 180)
+
+# Gripping
+grab()
+release()
+grab.with_force(0.8)
+
+# Lighting
+light.on(color: "red")
+light.off()
+light.blink(frequency: 2)
+
+# Speech
+speak("Hello, I am a robot!")
+speak("Warning: Obstacle detected", priority: "high")
+```
+
+### 4.4 Perception Commands
+```rsl
+# Distance sensor
+let dist = sense.ultrasonic()
+let dist_front = sense.ultrasonic(direction: "front")
+
+# Vision
+let objects = vision.detect("person")
+let gesture = vision.gesture()
+
+# Voice
+let command = voice.recognize()
+
+# Power & Position
+let battery = power.battery()
+let pos = position.current()
+```
+
+### 4.5 AI Interfaces
+```rsl
+# Object detection
+let result = ai.detect("person", confidence: 0.8)
+if result.found {
+  speak("I see a " + result.objects[0].label)
+}
+
+# Gesture recognition
+let gesture = ai.gesture()
+if gesture == "wave" {
+  speak("Hello!")
+}
+
+# Path planning
+let path = ai.path_plan(start: pos, goal: target, mode: "fast")
+for point in path {
+  move.to(point)
+}
+
+# Voice control
+let cmd = ai.voice_recognize()
+if cmd == "come here" {
+  move.forward(1.0)
+}
+```
+
+### 4.6 Control Structures
+#### Conditionals
+```rsl
+if battery < 20 {
+  speak("Low battery, returning to charge")
+  go_charge()
+} else if battery < 50 {
+  speak("Battery medium")
+} else {
+  speak("Battery good")
+}
+```
+
+#### Loops
+```rsl
+# For loop
+for i in range(0, 10) {
+  move.forward(0.5)
+  rotate(36)
+}
+
+# While loop
+while sense.ultrasonic() > 0.3 {
+  move.forward(0.2)
+}
+
+# Iterate over list
+for obj in objects {
+  speak("I see " + obj.label)
+}
+```
+
+#### Event Handling
+```rsl
+# Event listeners
+on button.pressed {
+  speak("Button pressed!")
+}
+
+on obstacle.detected {
+  move.stop()
+  rotate(90)
+}
+
+on voice.command("stop") {
+  move.stop()
+  speak("Stopped")
+}
+```
+
+#### Parallel Execution
+```rsl
+parallel {
+  move.forward(1.0)
+  speak("Moving forward")
+}
+
+parallel {
+  vision.detect("person")
+  voice.listen()
+}
+```
+
+---
+
+## 5. Expressions
+### 5.1 Arithmetic Operations
+```rsl
+let sum = 1 + 2
+let diff = 5 - 3
+let product = 4 * 5
+let quotient = 10 / 2
+let power = 2 ^ 8
+let mod = 17 % 5
+```
+
+### 5.2 Comparison Operations
+```rsl
+let a = 1 < 2
+let b = 3 >= 3
+let c = "hello" == "hello"
+let d = 5 != 3
+```
+
+### 5.3 Logical Operations
+```rsl
+let a = true and false  # false
+let b = true or false   # true
+let c = not true        # false
+```
+
+### 5.4 Member Access
+```rsl
+let result = ai.detect("person")
+let label = result.objects[0].label
+let confidence = result.objects[0].confidence
+```
+
+---
+
+## 6. Standard Library
+### 6.1 Action Library
+| Function | Description | Parameters |
+|----------|-------------|------------|
+| `move.forward(speed)` | Move forward | `speed`: 0.0-1.0 |
+| `move.backward(speed)` | Move backward | `speed`: 0.0-1.0 |
+| `move.stop()` | Stop movement | - |
+| `rotate.left(degrees)` | Rotate left | `degrees`: number |
+| `rotate.right(degrees)` | Rotate right | `degrees`: number |
+| `grab(force)` | Gripper close | `force`: 0.0-1.0 |
+| `release()` | Gripper open | - |
+| `speak(text)` | Audio output | `text`: string |
+| `light.on(color)` | Turn light on | `color`: string |
+
+### 6.2 Sensor Library
+| Function | Description | Return Type |
+|----------|-------------|-------------|
+| `sense.ultrasonic()` | Ultrasonic distance | `sensor_data` |
+| `sense.infrared()` | Infrared sensor | `sensor_data` |
+| `sense.touch()` | Touch detection | `bool` |
+| `vision.detect(type)` | Visual detection | `ai_result` |
+| `voice.recognize()` | Speech-to-text | `ai_result` |
+| `power.battery()` | Battery percentage | `number` |
+| `position.current()` | Current coordinates | `map` |
+
+### 6.3 AI Library
+| Function | Description | Return Type |
+|----------|-------------|-------------|
+| `ai.detect(type)` | Object detection | `ai_result` |
+| `ai.gesture()` | Gesture recognition | `string` |
+| `ai.path_plan(start, goal)` | Path planning | `list` |
+| `ai.follow(target)` | Target following | `void` |
+| `ai.predict(action)` | Action prediction | `ai_result` |
+
+---
+
+## 7. Module System
+### 7.1 Import Modules
+```rsl
+import actions
+import sensors
+import ai
+
+# Alias imports
+import actions as act
+import custom.skill as my_skill
+```
+
+### 7.2 Export
+```rsl
+skill my_skill {
+  export fn helper_function() {
+    # Shared utility function
+  }
+}
+```
+
+---
+
+## 8. Example Programs
+### 8.1 Smart Cleaning Robot
+```rsl
+skill cleaning_robot {
+  version = "1.0.0"
+
+  fn setup() {
+    move.init()
+    sense.ultrasonic.init()
+  }
+
+  fn loop() {
+    if power.battery() < 20 {
+      speak("Low battery, returning to charge")
+      go_charge()
+      return
+    }
+
+    let dist = sense.ultrasonic()
+    if dist < 0.5 {
+      rotate(90)
+    } else {
+      move.forward(0.5)
+    }
+  }
+
+  fn go_charge() {
+    let path = ai.path_plan(
+      start: position.current(),
+      goal: {x: 0, y: 0}
+    )
+    for point in path {
+      move.to(point)
+    }
+  }
+}
+```
+
+### 8.2 Gesture Control
+```rsl
+skill gesture_control {
+  fn on_gesture() {
+    let gesture = ai.gesture()
+
+    if gesture == "wave" {
+      speak("Hello!")
+      move.forward(0.5)
+    }
+    else if gesture == "stop" {
+      move.stop()
+      speak("Stopped")
+    }
+    else if gesture == "come" {
+      move.forward(1.0)
+    }
+  }
+}
+```
+
+---
+
+## 9. Compilation Targets
+RSL supports compilation to these platforms:
+
+| Target | Extension | Description |
+|--------|-----------|-------------|
+| Python | `.py` | Python 3.8+ compatible |
+| C++ | `.cpp` | C++17 standard |
+| ROS 2 | `.cpp/.hpp` | rclcpp integration |
+| Home Assistant | `.yaml` | Automation scripts |
+| JavaScript | `.js` | Web robot control |
+
+---
+
+## 10. Syntax Cheat Sheet
+```rsl
+skill name { ... }           # Define skill package
+fn name() { ... }           # Define function
+let x = value               # Declare variable
+if condition { ... }        # Conditional statement
+for x in collection { ... } # For loop
+on event { ... }            # Event listener
+move.forward(speed)         # Movement action
+sense.ultrasonic()          # Sensor reading
+ai.detect("person")         # AI inference
+import module               # Import module
+export fn name() { ... }    # Export function
+parallel { ... }            # Parallel execution
+```
+
+---
+**Version**: 1.0.0 | Last Updated: 2024
