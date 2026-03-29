@@ -1,0 +1,158 @@
+##
+RoboSkill DSL Example: 智能清扫机器人
+==========================================
+
+功能描述：
+1. 自动检测障碍物并绕行
+2. 执行清扫动作
+3. 电量低时自动返回充电
+4. 语音反馈当前状态
+
+作者: RoboTeam
+版本: 1.0.0
+##
+
+skill cleaning_robot {
+    # 元数据
+    version = "1.0.0"
+    author = "RoboTeam"
+    description = "智能清扫机器人 - 自动避障、清扫、充电"
+
+    # 状态变量
+    let is_cleaning = false
+    let cleaning_time = 0
+    let max_cleaning_time = 300  # 5分钟
+    let charge_station = {x: 0, y: 0}
+
+    # 初始化
+    fn setup() {
+        speak("Initializing cleaning robot")
+        move.stop()
+        light.on("blue")
+        wait(500)
+        light.off()
+        speak("Ready!")
+    }
+
+    # 主循环
+    fn loop() {
+        # 检查电量
+        let battery = power.battery()
+
+        if battery < 20 {
+            speak("Low battery, returning to charge")
+            light.blink("red", 2)
+            return_to_charge()
+            return
+        }
+
+        # 检测障碍物
+        let front_dist = sense.ultrasonic("front")
+        let left_dist = sense.ultrasonic("left")
+        let right_dist = sense.ultrasonic("right")
+
+        if front_dist < 0.5 {
+            # 前方有障碍物
+            speak("Obstacle ahead")
+            light.on("yellow")
+
+            # 找到最宽的通道
+            if left_dist > right_dist {
+                rotate.left(90)
+                speak("Turning left")
+            } else {
+                rotate.right(90)
+                speak("Turning right")
+            }
+            wait(500)
+            light.off()
+        }
+
+        # 正常前进并清扫
+        move.forward(0.6)
+        speak("Cleaning")
+        wait(100)
+
+        # 更新清扫时间
+        cleaning_time = cleaning_time + 1
+
+        # 清扫达到最大时间，返回充电
+        if cleaning_time >= max_cleaning_time {
+            speak("Cleaning complete, returning home")
+            return_to_charge()
+        }
+    }
+
+    # 返回充电站
+    fn return_to_charge() {
+        let current_pos = position.current()
+
+        # 路径规划
+        let path = ai.path_plan(
+            start: current_pos,
+            goal: charge_station,
+            mode: "safe"
+        )
+
+        # 按路径移动
+        for point in path {
+            move.to(point.x, point.y)
+            wait(200)
+        }
+
+        speak("Arrived at charging station")
+        light.on("green")
+
+        # 开始充电
+        start_charging()
+    }
+
+    # 开始充电
+    fn start_charging() {
+        speak("Charging started")
+        light.blink("green", 1)
+
+        while power.battery() < 95 {
+            wait(5000)  # 每5秒检查一次
+            let current = power.battery()
+            if current % 20 == 0 {
+                speak("Battery at " + str(current) + " percent")
+            }
+        }
+
+        speak("Charging complete!")
+        light.off()
+        cleaning_time = 0
+        is_cleaning = false
+    }
+
+    # 事件处理器
+    on button.pressed {
+        speak("Button pressed, starting cleaning")
+        is_cleaning = true
+        cleaning_time = 0
+        light.on("blue")
+    }
+
+    on voice.command("stop") {
+        speak("Stopping")
+        move.stop()
+        is_cleaning = false
+        light.off()
+    }
+
+    on voice.command("go home") {
+        speak("Returning to charge")
+        return_to_charge()
+    }
+
+    # AI 检测到的物体处理
+    fn handle_detection(obj) {
+        if obj.label == "person" {
+            speak("Hello, person!")
+            light.on("white")
+            wait(1000)
+            light.off()
+        }
+    }
+}
