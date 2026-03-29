@@ -2,7 +2,7 @@
 
 **面向机器人技能的领域专用语言**
 
-[English](./README.md) | 中文
+[English](./README.md) | 中文(enlish version is in the back)
 
 ---
 
@@ -456,3 +456,461 @@ MIT License
   - 支持 Python、C++、ROS 2 编译目标
   - 完整的动作、感知、AI 标准库
   - 解释器和代码生成器
+
+# RoboSkill DSL (RSL)
+## Domain-Specific Language for Robot Skills
+
+中文 | [English](./README.md)
+
+---
+
+## Overview
+
+RoboSkill DSL is a domain-specific language designed specifically for robot skill development, offering:
+
+- 🚀 **Minimal Syntax** – Declarative syntax similar to natural language
+- 🤖 **AI-Friendly** – Clear grammatical structure for AI models to automatically generate valid code
+- 🌐 **Cross-Platform** – Supports Python, C++, ROS 2, Home Assistant, and more
+- 🔧 **Modular** – Supports skill packages, functions, and event handling
+- 📦 **Standard Library** – Provides unified interfaces for movement, perception, and AI functions
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/roboteam/roboskill-dsl.git
+cd roboskill-dsl
+
+# Install dependencies
+pip install -e .
+```
+
+### Write Your First Skill
+
+Create a file `hello_robot.rsl`:
+
+```rsl
+skill hello_robot {
+    fn setup() {
+        speak("Hello! I'm RoboSkill!")
+        light.on("blue")
+    }
+
+    fn loop() {
+        move.forward(1.0)
+        wait(1000)
+        rotate.left(90)
+        wait(1000)
+    }
+}
+```
+
+### Compile and Run
+
+```bash
+# Compile to Python
+python rslc.py hello_robot.rsl -t python -o hello_robot.py
+python hello_robot.py
+
+# Or interpret directly
+python rslc.py hello_robot.rsl -I
+```
+
+---
+
+## Language Specification
+
+### Basic Data Types
+
+```rsl
+# Numeric
+let speed = 1.5
+let angle = 90
+
+# Boolean
+let is_active = true
+let has_obstacle = false
+
+# String
+let name = "Robot-001"
+let greeting = "Hello!"
+
+# List
+let path = [1.0, 2.0, 3.0]
+let colors = ["red", "green", "blue"]
+
+# Map
+let point = {x: 1.0, y: 2.0}
+let config = {speed: 0.5, color: "blue"}
+```
+
+### Movement Commands
+
+```rsl
+# Motion
+move.forward(speed: 1.0)
+move.backward(speed: 0.5)
+move.stop()
+
+# Rotation
+rotate.left(degrees: 90)
+rotate.right(degrees: 45)
+rotate.to(angle: 180)
+
+# Gripping
+grab()
+grab.with_force(0.8)
+release()
+
+# Speech
+speak("Hello, world!")
+speak("Warning!", priority: "high")
+
+# Lighting
+light.on(color: "red")
+light.off()
+light.blink(color: "yellow", frequency: 2)
+```
+
+### Perception Commands
+
+```rsl
+# Distance sensor
+let distance = sense.ultrasonic()
+let dist_left = sense.ultrasonic(direction: "left")
+
+# Touch
+if sense.touch() {
+    speak("Touched!")
+}
+
+# Battery
+let battery = power.battery()
+if battery < 20 {
+    speak("Low battery!")
+}
+
+# Position
+let pos = position.current()
+let x = pos.x
+```
+
+### AI Features
+
+```rsl
+# Object detection
+let result = ai.detect("person")
+if result.found {
+    speak("I see a person!")
+}
+
+# Gesture recognition
+let gesture = ai.gesture()
+if gesture == "wave" {
+    speak("Hello!")
+}
+
+# Speech recognition
+let cmd = ai.voice_recognize()
+if cmd == "stop" {
+    move.stop()
+}
+
+# Path planning
+let path = ai.path_plan(start: pos, goal: target, mode: "safe")
+for point in path {
+    move.to(point.x, point.y)
+}
+```
+
+### Control Structures
+
+```rsl
+# Conditionals
+if battery < 20 {
+    go_charge()
+} else if battery < 50 {
+    speak("Battery medium")
+} else {
+    speak("Battery good")
+}
+
+# For loop
+for i in range(0, 10) {
+    move.forward(0.5)
+    rotate(36)
+}
+
+# While loop
+while sense.ultrasonic() > 0.3 {
+    move.forward(0.2)
+}
+
+# Event handling
+on button.pressed {
+    speak("Button pressed!")
+}
+
+on voice.command("stop") {
+    move.stop()
+}
+```
+
+### Function Definitions
+
+```rsl
+fn calculate_distance(x1, y1, x2, y2) -> number {
+    let dx = x2 - x1
+    let dy = y2 - y1
+    return math.sqrt(dx * dx + dy * dy)
+}
+
+fn move_to(x, y) {
+    let dist = calculate_distance(pos.x, pos.y, x, y)
+    while dist > 0.1 {
+        move.forward(dist)
+        wait(100)
+    }
+}
+```
+
+---
+
+## Compilation Targets
+
+### Python
+
+```bash
+python rslc.py skill.rsl -t python -o skill.py
+```
+
+### C++
+
+```bash
+python rslc.py skill.rsl -t cpp -o skill.cpp
+# Compile
+g++ -std=c++17 -o skill skill.cpp -lrobokit
+```
+
+### ROS 2
+
+```bash
+python rslc.py skill.rsl -t ros -o skill_node.cpp
+# Place in ROS package and build
+colcon build && source install/setup.bash
+ros2 run my_package skill_node
+```
+
+### Home Assistant
+
+```bash
+python rslc.py skill.rsl -t home_assistant -o automation.yaml
+# Add automation config to Home Assistant
+```
+
+---
+
+## Example Skills
+
+### Smart Cleaning Robot
+
+Full example: `examples/cleaning_robot/cleaning_robot.rsl`
+
+```rsl
+skill cleaning_robot {
+    fn loop() {
+        if power.battery() < 20 {
+            speak("Low battery")
+            return_to_charge()
+        }
+
+        let dist = sense.ultrasonic()
+        if dist < 0.5 {
+            rotate(90)
+        } else {
+            move.forward(0.5)
+        }
+    }
+}
+```
+
+### Gesture Control
+
+Full example: `examples/gesture_control/gesture_control.rsl`
+
+```rsl
+skill gesture_control {
+    fn main_loop() {
+        let gesture = ai.gesture()
+
+        if gesture == "wave" {
+            speak("Hello!")
+            move.forward(0.5)
+        }
+        else if gesture == "stop" {
+            move.stop()
+        }
+    }
+}
+```
+
+---
+
+## AI Auto-Generation Prompt Templates
+
+### Basic Action Generation
+
+```
+Generate RSL code for a robot to implement the following behavior:
+[Describe the robot's action requirements]
+
+Requirements:
+- Use valid RSL syntax
+- Include setup() and loop() functions
+- Use the movement and perception libraries
+```
+
+### Full Skill Generation
+
+```
+Generate complete RSL skill code for a [robot type].
+
+Functional requirements:
+1. [Description of function 1]
+2. [Description of function 2]
+3. [Description of function 3]
+
+Constraints:
+- Execute [action] when battery is below [X]%
+- Execute [action] when [object] is detected
+- Support voice commands: [list commands]
+
+Generate code with these sections:
+- Skill metadata
+- setup() initialization function
+- loop() main loop
+- Event handlers
+```
+
+### Example Prompt
+
+```
+Generate RSL code for a cleaning robot:
+1. Automatically detect obstacles ahead; turn left 90 degrees if distance < 0.5m
+2. Announce "Cleaning" every 1 meter moved forward
+3. Return to charging station at position (0,0) when battery < 20%
+4. Support voice commands "stop" and "go home"
+
+Use this structure:
+- skill cleaning_robot
+- setup() to initialize sensors and actuators
+- loop() main detection and execution
+- return_to_charge() function to return to dock
+- Event handlers for voice commands
+```
+
+---
+
+## Project Structure
+
+```
+roboskill-dsl/
+├── src/
+│   ├── lexer/          # Lexical analyzer
+│   │   └── lexer.py
+│   ├── parser/         # Syntax parser
+│   │   └── parser.py
+│   ├── ast/            # AST node definitions
+│   │   └── nodes.py
+│   ├── codegen/        # Code generator
+│   │   └── generator.py
+│   └── adapters/       # Adapter layer
+│       └── adapters.py
+├── stdlib/             # Standard library
+│   └── stdlib.py
+├── examples/           # Example programs
+│   ├── cleaning_robot/
+│   ├── gesture_control/
+│   └── patrol_robot/
+├── docs/               # Documentation
+├── tests/              # Tests
+├── rslc.py             # Compiler entry point
+├── SPEC.md             # Language specification
+└── README.md
+```
+
+---
+
+## Development Guide
+
+### Adding a New Compilation Target
+
+1. Create a new generator class in `src/codegen/generator.py`
+2. Inherit from the `CodeGenerator` base class
+3. Implement all `visit_*` methods
+4. Register in the `generate_code()` function
+
+```python
+class MyTargetGenerator(CodeGenerator):
+    def visit_program(self, node: Program):
+        # Generate target code
+        pass
+
+    # ... implement other methods
+```
+
+### Adding a New Adapter
+
+1. Create an adapter class in `src/adapters/adapters.py`
+2. Inherit from `ActionAdapter`, `SensorAdapter`, or `AIAdapter`
+3. Implement abstract methods
+4. Register in `AdapterFactory`
+
+```python
+class MyActionAdapter(ActionAdapter):
+    def move_forward(self, speed: float) -> bool:
+        # Implement movement
+        pass
+```
+
+---
+
+## Testing
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific tests
+python -m pytest tests/test_lexer.py
+python -m pytest tests/test_parser.py
+
+# Run an example
+python rslc.py examples/cleaning_robot/cleaning_robot.rsl -t python -o /tmp/test.py
+python /tmp/test.py
+```
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Contributing
+
+Issues and Pull Requests are welcome!
+
+---
+
+## Version History
+
+- **v1.0.0** (2024) – Initial release
+  - Supports Python, C++, ROS 2 compilation targets
+  - Complete movement, perception, and AI standard library
+  - Interpreter and code generator
