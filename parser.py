@@ -1,4 +1,4 @@
-"""
+"""(english version in the back)
 RoboSkill DSL Parser - 语法分析器
 将 Token 流转换为 AST
 """
@@ -692,6 +692,664 @@ def parse(source: str) -> Program:
 
 if __name__ == "__main__":
     # 测试
+    test_code = '''
+    skill cleaning_robot {
+        version = "1.0.0"
+
+        fn setup() {
+            move.init()
+        }
+
+        fn loop() {
+            let battery = power.battery()
+            if battery < 20 {
+                speak("Low battery")
+            } else {
+                move.forward(0.5)
+            }
+        }
+    }
+    '''
+
+    program = parse(test_code)
+    print("Program parsed successfully!")
+    print(f"Skills: {[s.name for s in program.skills]}")
+    for skill in program.skills:
+        for stmt in skill.statements:
+            print(f"  - {type(stmt).__name__}")
+
+
+
+
+"""
+RoboSkill DSL Parser
+Converts token stream into AST
+"""
+
+from typing import List, Optional, Dict
+from src.lexer.lexer import Lexer, Token, TokenType
+from src.ast.nodes import *
+
+
+class ParseError(Exception):
+    def __init__(self, message, token: Token):
+        self.message = message
+        self.token = token
+        super().__init__(f"Parse error at {token.line}:{token.column}: {message}")
+
+
+class Parser:
+    """RoboSkill DSL Parser"""
+
+    def __init__(self, tokens: List[Token]):
+        self.tokens = tokens
+        self.current = 0
+        self.errors: List[ParseError] = []
+
+    def skip_newlines(self):
+        """Skip newline tokens"""
+        while self.match(TokenType.NEWLINE):
+            pass
+
+    def parse(self) -> Program:
+        """Parse the entire program"""
+        program = Program()
+        self.skip_newlines()
+
+        while not self.is_at_end():
+            try:
+                if self.match(TokenType.IMPORT):
+                    program.imports.append(self.parse_import())
+                elif self.check(TokenType.SKILL):
+                    program.skills.append(self.parse_skill())
+                elif self.check(TokenType.FN):
+                    program.functions.append(self.parse_function())
+                elif self.check(TokenType.EXPORT):
+                    self.advance()  # consume 'export'
+                else:
+                    self.advance()
+                self.skip_newlines()
+            except ParseError as e:
+                self.errors.append(e)
+                self.synchronize()
+
+        return program
+
+    # ==================== Helper Methods ====================
+
+    def is_at_end(self) -> bool:
+        """Check if reached end of token stream"""
+        return self.peek().type == TokenType.EOF
+
+    def peek(self) -> Token:
+        """Look at current token"""
+        return self.tokens[self.current]
+
+    def previous(self) -> Token:
+        """Return previous token"""
+        return self.tokens[self.current - 1]
+
+    def check(self, token_type: TokenType) -> bool:
+        """Check if current token is of given type"""
+        if self.is_at_end():
+            return False
+        return self.peek().type == token_type
+
+    def check_next(self, token_type: TokenType) -> bool:
+        """Check if next token is of given type"""
+        if self.current + 1 >= len(self.tokens):
+            return False
+        return self.tokens[self.current + 1].type == token_type
+
+    def advance(self) -> Token:
+        """Consume current token and return it"""
+        if not self.is_at_end():
+            self.current += 1
+        return self.previous()
+
+    def match(self, *types: TokenType) -> bool:
+        """Check if current token matches any given type"""
+        for t in types:
+            if self.check(t):
+                self.advance()
+                return True
+        return False
+
+    def consume(self, token_type: TokenType, message: str) -> Token:
+        """Consume token of specified type or throw error"""
+        if self.check(token_type):
+            return self.advance()
+        raise ParseError(message, self.peek())
+
+    # ==================== Imports ====================
+
+    def parse_import(self) -> Import:
+        """Parse import statement"""
+        module = self.consume(TokenType.IDENTIFIER, "Expected module name")
+
+        import_node = Import()
+        import_node.module = module.lexeme
+
+        if self.match(TokenType.AS):
+            alias = self.consume(TokenType.IDENTIFIER, "Expected alias")
+            import_node.alias = alias.lexeme
+
+        self.consume(TokenType.SEMICOLON, "Expected ';' after import")
+        return import_node
+
+    # ==================== Skill Definitions ====================
+
+    def parse_skill(self) -> Skill:
+        """Parse skill definition"""
+        self.consume(TokenType.SKILL, "Expected 'skill'")
+
+        name = self.consume(TokenType.IDENTIFIER, "Expected skill name")
+        self.consume(TokenType.LBRACE, "Expected '{' after skill name")
+
+        skill = Skill()
+        skill.name = name.lexeme
+
+        while not self.check(TokenType.RBRACE) and not self.is_at_end():
+            self.parse_skill_member(skill)
+
+        self.consume(TokenType.RBRACE, "Expected '}' after skill body")
+        return skill
+
+    def parse_skill_member(self, skill: Skill):
+        """Parse skill member (metadata, function, event, statement)"""
+        self.skip_newlines()
+        if self.check(TokenType.IDENTIFIER):
+            name = self.peek()
+            if self.check_next(TokenType.ASSIGN):
+                self.advance()
+                self.advance()
+                value = self.expression()
+                self.consume(TokenType.SEMICOLON, "Expected ';' after assignment")
+
+                if name.lexeme == 'version':
+                    skill.version = value.value if isinstance(value, Literal) else None
+                elif name.lexeme == 'author':
+                    skill.author = value.value if isinstance(value, Literal) else None
+                elif name.lexeme == 'description':
+                    skill.description = value.value if isinstance(value, Literal) else None
+            else:
+                stmt = self.parse_statement()
+                skill.statements.append(stmt)
+        elif self.check(TokenType.FN):
+            self.advance()
+            func = self.parse_function()
+            skill.statements.append(func)
+        elif self.check(TokenType.ON):
+            self.advance()
+            handler = self.parse_event_handler()
+            skill.statements.append(handler)
+        else:
+            stmt = self.parse_statement()
+            skill.statements.append(stmt)
+
+    # ==================== Functions ====================
+
+    def parse_function(self) -> Function:
+        """Parse function definition"""
+        name = self.consume(TokenType.IDENTIFIER, "Expected function name")
+        self.consume(TokenType.LPAREN, "Expected '(' after function name")
+
+        func = Function()
+        func.name = name.lexeme
+
+        if not self.check(TokenType.RPAREN):
+            while True:
+                param = self.parse_parameter()
+                func.parameters.append(param)
+                if not self.match(TokenType.COMMA):
+                    break
+
+        self.consume(TokenType.RPAREN, "Expected ')' after parameters")
+
+        if self.match(TokenType.ARROW):
+            return_type = self.consume(TokenType.IDENTIFIER, "Expected return type")
+            func.return_type = return_type.lexeme
+
+        self.consume(TokenType.LBRACE, "Expected '{' before function body")
+        func.body = self.parse_block()
+
+        return func
+
+    def parse_parameter(self) -> Parameter:
+        """Parse function parameter"""
+        name = self.consume(TokenType.IDENTIFIER, "Expected parameter name")
+
+        param = Parameter()
+        param.name = name.lexeme
+
+        if self.match(TokenType.COLON):
+            param_type = self.consume(TokenType.IDENTIFIER, "Expected type name")
+            param.param_type = param_type.lexeme
+
+        if self.match(TokenType.ASSIGN):
+            param.default_value = self.expression()
+
+        return param
+
+    # ==================== Statements ====================
+
+    def parse_statement(self) -> Statement:
+        """Parse any statement"""
+        if self.match(TokenType.RETURN):
+            return self.parse_return()
+        if self.match(TokenType.IF):
+            return self.parse_if()
+        if self.match(TokenType.FOR):
+            return self.parse_for()
+        if self.match(TokenType.WHILE):
+            return self.parse_while()
+        if self.match(TokenType.PARALLEL):
+            return self.parse_parallel()
+        if self.match(TokenType.LET) or self.match(TokenType.IDENTIFIER):
+            if self.previous().type == TokenType.LET:
+                return self.parse_variable_declaration()
+            else:
+                self.current -= 1
+                return self.parse_assignment_or_expression()
+        if self.match(TokenType.LBRACE):
+            stmts = self.parse_block()
+            if len(stmts) == 1:
+                return stmts[0]
+            else:
+                block = Parallel()
+                block.statements = stmts
+                return block
+
+        return self.parse_expression_statement()
+
+    def parse_return(self) -> Return:
+        """Parse return statement"""
+        ret = Return()
+        if not self.check(TokenType.SEMICOLON) and not self.check(TokenType.RBRACE):
+            ret.value = self.expression()
+        self.consume(TokenType.SEMICOLON, "Expected ';' after return")
+        return ret
+
+    def parse_if(self) -> If:
+        """Parse if statement"""
+        if_stmt = If()
+        if_stmt.condition = self.expression()
+        self.consume(TokenType.LBRACE, "Expected '{' after if condition")
+
+        if_stmt.then_branch = self.parse_block()
+
+        if self.match(TokenType.ELSE):
+            if self.check(TokenType.IF):
+                self.advance()
+                if_stmt.else_branch = [self.parse_if()]
+            else:
+                self.consume(TokenType.LBRACE, "Expected '{' after else")
+                if_stmt.else_branch = self.parse_block()
+
+        return if_stmt
+
+    def parse_for(self) -> For:
+        """Parse for loop"""
+        for_stmt = For()
+
+        var = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+        for_stmt.variable = var.lexeme
+
+        self.consume(TokenType.IN, "Expected 'in' after variable")
+        for_stmt.iterable = self.expression()
+
+        self.consume(TokenType.LBRACE, "Expected '{' after for")
+        for_stmt.body = self.parse_block()
+
+        return for_stmt
+
+    def parse_while(self) -> While:
+        """Parse while loop"""
+        while_stmt = While()
+        while_stmt.condition = self.expression()
+        self.consume(TokenType.LBRACE, "Expected '{' after while condition")
+        while_stmt.body = self.parse_block()
+        return while_stmt
+
+    def parse_parallel(self) -> Parallel:
+        """Parse parallel block"""
+        self.consume(TokenType.LBRACE, "Expected '{' after parallel")
+        parallel = Parallel()
+        parallel.statements = self.parse_block()
+        return parallel
+
+    def parse_event_handler(self) -> EventHandler:
+        """Parse event handler"""
+        handler = EventHandler()
+
+        event = self.consume(TokenType.IDENTIFIER, "Expected event name")
+        handler.event = event.lexeme
+
+        if self.match(TokenType.LPAREN):
+            if not self.check(TokenType.RPAREN):
+                while True:
+                    arg = self.expression()
+                    handler.event_params.append(arg)
+                    if not self.match(TokenType.COMMA):
+                        break
+            self.consume(TokenType.RPAREN, "Expected ')' after event parameters")
+
+        self.consume(TokenType.LBRACE, "Expected '{' after event name")
+        handler.body = self.parse_block()
+
+        return handler
+
+    def parse_variable_declaration(self) -> Assignment:
+        """Parse variable declaration: let x = value"""
+        name = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+
+        assign = Assignment()
+        assign.is_local = True
+
+        ident = Identifier()
+        ident.name = name.lexeme
+        assign.target = ident
+
+        if self.match(TokenType.ASSIGN):
+            assign.value = self.expression()
+
+        self.consume(TokenType.SEMICOLON, "Expected ';' after variable declaration")
+        return assign
+
+    def parse_assignment_or_expression(self) -> Statement:
+        """Parse assignment or expression statement"""
+        expr = self.expression()
+
+        if self.match(TokenType.ASSIGN):
+            value = self.expression()
+            self.consume(TokenType.SEMICOLON, "Expected ';' after assignment")
+
+            assign = Assignment()
+            if isinstance(expr, Identifier):
+                assign.target = expr
+            elif isinstance(expr, MemberAccess):
+                assign.target = expr
+            else:
+                assign.target = expr
+            assign.value = value
+            return assign
+
+        self.consume(TokenType.SEMICOLON, "Expected ';' after expression")
+        return ExpressionStatement(expr)
+
+    def parse_expression_statement(self) -> ExpressionStatement:
+        """Parse expression statement"""
+        expr = self.expression()
+        self.consume(TokenType.SEMICOLON, "Expected ';' after expression")
+        return ExpressionStatement(expr)
+
+    def parse_block(self) -> List[Statement]:
+        """Parse code block inside braces"""
+        self.skip_newlines()
+        statements = []
+        while not self.check(TokenType.RBRACE) and not self.is_at_end():
+            stmt = self.parse_statement()
+            statements.append(stmt)
+            self.skip_newlines()
+        self.consume(TokenType.RBRACE, "Expected '}' after block")
+        return statements
+
+    # ==================== Expressions ====================
+
+    def expression(self) -> Expression:
+        """Entry point for expression parsing"""
+        return self.parse_or()
+
+    def parse_or(self) -> Expression:
+        """Parse logical OR expressions"""
+        expr = self.parse_and()
+
+        while self.match(TokenType.OR):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = "or"
+            binary.right = self.parse_and()
+            expr = binary
+
+        return expr
+
+    def parse_and(self) -> Expression:
+        """Parse logical AND expressions"""
+        expr = self.parse_equality()
+
+        while self.match(TokenType.AND):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = "and"
+            binary.right = self.parse_equality()
+            expr = binary
+
+        return expr
+
+    def parse_equality(self) -> Expression:
+        """Parse equality comparisons (==, !=)"""
+        expr = self.parse_comparison()
+
+        while self.match(TokenType.EQ, TokenType.NE):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = self.previous().lexeme
+            binary.right = self.parse_comparison()
+            expr = binary
+
+        return expr
+
+    def parse_comparison(self) -> Expression:
+        """Parse comparison expressions (<, >, <=, >=)"""
+        expr = self.parse_term()
+
+        while self.match(TokenType.LT, TokenType.GT, TokenType.LE, TokenType.GE):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = self.previous().lexeme
+            binary.right = self.parse_term()
+            expr = binary
+
+        return expr
+
+    def parse_term(self) -> Expression:
+        """Parse additive expressions (+, -)"""
+        expr = self.parse_factor()
+
+        while self.match(TokenType.PLUS, TokenType.MINUS):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = self.previous().lexeme
+            binary.right = self.parse_factor()
+            expr = binary
+
+        return expr
+
+    def parse_factor(self) -> Expression:
+        """Parse multiplicative expressions (*, /, %)"""
+        expr = self.parse_unary()
+
+        while self.match(TokenType.STAR, TokenType.SLASH, TokenType.PERCENT):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = self.previous().lexeme
+            binary.right = self.parse_unary()
+            expr = binary
+
+        return expr
+
+    def parse_unary(self) -> Expression:
+        """Parse unary expressions (-value, not value)"""
+        if self.match(TokenType.MINUS):
+            unary = Unary()
+            unary.operator = "-"
+            unary.operand = self.parse_unary()
+            return unary
+
+        if self.match(TokenType.NOT):
+            unary = Unary()
+            unary.operator = "not"
+            unary.operand = self.parse_unary()
+            return unary
+
+        return self.parse_power()
+
+    def parse_power(self) -> Expression:
+        """Parse exponentiation (^)"""
+        expr = self.parse_call()
+
+        if self.match(TokenType.CARET):
+            binary = Binary()
+            binary.left = expr
+            binary.operator = "^"
+            binary.right = self.parse_unary()
+            return binary
+
+        return expr
+
+    def parse_call(self) -> Expression:
+        """Parse function calls, member access, indexing"""
+        expr = self.parse_primary()
+
+        while True:
+            if self.match(TokenType.LPAREN):
+                expr = self.finish_call(expr)
+            elif self.match(TokenType.DOT):
+                name = self.consume(TokenType.IDENTIFIER, "Expected property name")
+                member = MemberAccess()
+                member.object = expr
+                member.property = name.lexeme
+                expr = member
+            elif self.match(TokenType.LBRACKET):
+                index = self.expression()
+                self.consume(TokenType.RBRACKET, "Expected ']' after index")
+                idx = IndexAccess()
+                idx.object = expr
+                idx.index = index
+                expr = idx
+            else:
+                break
+
+        return expr
+
+    def finish_call(self, callee: Expression) -> Call:
+        """Finish parsing function call arguments"""
+        call = Call()
+        call.callee = callee
+        call.arguments = []
+
+        if not self.check(TokenType.RPAREN):
+            while True:
+                call.arguments.append(self.expression())
+                if not self.match(TokenType.COMMA):
+                    break
+
+        self.consume(TokenType.RPAREN, "Expected ')' after arguments")
+        return call
+
+    def parse_primary(self) -> Expression:
+        """Parse primary expressions (literals, identifiers, parentheses)"""
+        if self.match(TokenType.BOOLEAN):
+            literal = Literal()
+            literal.value = self.previous().value
+            literal.literal_type = "bool"
+            return literal
+
+        if self.match(TokenType.NUMBER):
+            literal = Literal()
+            literal.value = self.previous().value
+            literal.literal_type = "number"
+            return literal
+
+        if self.match(TokenType.STRING):
+            literal = Literal()
+            literal.value = self.previous().value
+            literal.literal_type = "string"
+            return literal
+
+        if self.match(TokenType.LIST_START):
+            return self.parse_list_literal()
+
+        if self.match(TokenType.LBRACE):
+            return self.parse_map_literal()
+
+        if self.match(TokenType.IDENTIFIER):
+            ident = Identifier()
+            ident.name = self.previous().lexeme
+            return ident
+
+        if self.match(TokenType.LPAREN):
+            expr = self.expression()
+            self.consume(TokenType.RPAREN, "Expected ')' after expression")
+            return expr
+
+        if self.match(TokenType.MOVE, TokenType.ROTATE, TokenType.GRAB, TokenType.RELEASE,
+                      TokenType.SPEAK, TokenType.LIGHT, TokenType.SENSE, TokenType.VISION,
+                      TokenType.VOICE, TokenType.AI, TokenType.DETECT, TokenType.RECOGNIZE,
+                      TokenType.PLAN, TokenType.PREDICT, TokenType.FOLLOW):
+            ident = Identifier()
+            ident.name = self.previous().lexeme
+            return ident
+
+        raise ParseError("Expected expression", self.peek())
+
+    def parse_list_literal(self) -> ListLiteral:
+        """Parse list literal [1, 2, 3]"""
+        lst = ListLiteral()
+
+        if not self.check(TokenType.LIST_END):
+            while True:
+                lst.elements.append(self.expression())
+                if not self.match(TokenType.COMMA):
+                    break
+
+        self.consume(TokenType.LIST_END, "Expected ']' after list elements")
+        return lst
+
+    def parse_map_literal(self) -> MapLiteral:
+        """Parse map literal { key: value }"""
+        m = MapLiteral()
+
+        if not self.check(TokenType.RBRACE):
+            while True:
+                key = self.consume(TokenType.IDENTIFIER, "Expected key")
+                self.consume(TokenType.COLON, "Expected ':' after key")
+                value = self.expression()
+                m.pairs[key.lexeme] = value
+                if not self.match(TokenType.COMMA):
+                    break
+
+        self.consume(TokenType.RBRACE, "Expected '}' after map literal")
+        return m
+
+    # ==================== Error Recovery ====================
+
+    def synchronize(self):
+        """Synchronize parser to next statement boundary"""
+        self.advance()
+
+        while not self.is_at_end():
+            if self.previous().type == TokenType.SEMICOLON:
+                return
+
+            if self.check(TokenType.SKILL) or self.check(TokenType.FN) or \
+               self.check(TokenType.IF) or self.check(TokenType.FOR) or \
+               self.check(TokenType.WHILE) or self.check(TokenType.RETURN):
+                return
+
+            self.advance()
+
+
+def parse(source: str) -> Program:
+    """Convenience function: parse source code directly"""
+    from src.lexer.lexer import tokenize
+    tokens = tokenize(source)
+    parser = Parser(tokens)
+    return parser.parse()
+
+
+if __name__ == "__main__":
+    # Test parser
     test_code = '''
     skill cleaning_robot {
         version = "1.0.0"
